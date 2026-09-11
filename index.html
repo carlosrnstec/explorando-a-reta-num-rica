@@ -1674,9 +1674,12 @@
       const [difficulty, setDifficulty] = useState('easy');
       const [score, setScore] = useState(0);
 
+      // URL padrão do Web App do Google Apps Script
+      const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbxB8jZVfkAiBEiKXLeIAoD9FJqvuaAR2BxxKMnZjivWfN9mPqkrJcG0XtRnLQFJiY49/exec";
+
       // Google Sheets Integration State
       const [webAppUrl, setWebAppUrl] = useState(() => {
-        return localStorage.getItem('reta_numerica_sheets_url') || '';
+        return localStorage.getItem('reta_numerica_sheets_url') || DEFAULT_SHEETS_URL;
       });
       const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
       const [isQRModalOpen, setIsQRModalOpen] = useState(false);
