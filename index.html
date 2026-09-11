@@ -1,0 +1,1857 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Explorador da Reta Numérica e Números Inteiros</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- Babel for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- QRCode.js Library para geração local de QR Code -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      user-select: none;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    .number-line-container {
+      touch-action: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // Lista fixa dos 5 subtemas para garantir cobertura 100% no Desafio
+    const SUBTHEMES = [
+      { id: 'locate', name: '1. Localizar Número', icon: '📍' },
+      { id: 'fractions', name: '2. Frações na Reta', icon: '🍰' },
+      { id: 'identify', name: '3. Identificar Ponto', icon: '❓' },
+      { id: 'operations', name: '4. Operações e Movimentos', icon: '➕' },
+      { id: 'distance', name: '5. Distância e Módulo', icon: '📏' }
+    ];
+
+    function getRandomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function generateQuestion(mode, difficulty) {
+      let q = {
+        mode,
+        difficulty,
+        title: '',
+        step: 1,
+        startVal: 0,
+        totalTicks: 11,
+        targetVal: 0,
+        initialUserVal: 0,
+        hints: [],
+        solutionExplanation: '',
+        options: [],
+        type: 'drag',
+        isFraction: false,
+        num: 1,
+        den: 2
+      };
+
+      if (mode === 'locate') {
+        let stepOptions = difficulty === 'easy' ? [1, 2, 5] : difficulty === 'medium' ? [3, 4, 6, 10] : [7, 8, 12, 15];
+        let step = stepOptions[getRandomInt(0, stepOptions.length - 1)];
+        let startTickIndex = getRandomInt(0, 3);
+        let startVal = startTickIndex * step;
+        
+        let targetIndex = getRandomInt(2, 10);
+        let targetVal = startVal + (targetIndex * step);
+
+        if (difficulty !== 'easy' && Math.random() > 0.4) {
+          let centerIndex = getRandomInt(4, 6);
+          startVal = -centerIndex * step;
+          targetIndex = getRandomInt(1, 10);
+          targetVal = startVal + (targetIndex * step);
+        }
+
+        q.step = step;
+        q.startVal = startVal;
+        q.targetVal = targetVal;
+        q.initialUserVal = startVal;
+        q.title = `Onde está o número ${targetVal} na reta numérica?`;
+        q.type = 'drag';
+
+        q.hints = [
+          `Observe os dois primeiros números marcados na reta para descobrir a variação de cada espaço.`,
+          `Subtraia os valores dos traços para saber a escala: o valor aumenta de ${step} em ${step}.`,
+          `Para chegar em ${targetVal}, comece no ${startVal} e conte de ${step} em ${step}.`
+        ];
+
+        q.solutionExplanation = `
+          1. O intervalo entre cada marcação na reta é de <strong>${step}</strong> unidades.<br/>
+          2. A reta começa em <strong>${startVal}</strong>.<br/>
+          3. O número <strong>${targetVal}</strong> está localizado a <strong>${(targetVal - startVal) / step}</strong> divisões à direita de ${startVal}.
+        `;
+
+      } else if (mode === 'fractions') {
+        let denominators = difficulty === 'easy' ? [2, 3, 4] : difficulty === 'medium' ? [3, 4, 5, 6] : [5, 6, 8, 10];
+        let den = denominators[getRandomInt(0, denominators.length - 1)];
+        
+        let maxUnits = 2;
+        let num = getRandomInt(1, maxUnits * den - 1);
+        
+        if (num % den === 0) {
+          num = num + 1 <= maxUnits * den - 1 ? num + 1 : num - 1;
+        }
+
+        let targetVal = num / den;
+        let step = 1 / den;
+        let totalTicks = (maxUnits * den) + 1;
+
+        q.isFraction = true;
+        q.den = den;
+        q.num = num;
+        q.step = step;
+        q.startVal = 0;
+        q.totalTicks = totalTicks;
+        q.targetVal = targetVal;
+        q.initialUserVal = 0;
+        q.title = `Onde está a fração ${num}/${den} na reta numérica?`;
+        q.type = 'drag';
+
+        q.hints = [
+          `Observe que cada inteiro (entre 0 e 1, 1 e 2) está dividido em exatamente ${den} partes iguais.`,
+          `Cada divisão menor vale 1/${den}.`,
+          `Para encontrar ${num}/${den}, parta do zero e avance ${num} divisões de tamanho 1/${den}.`
+        ];
+
+        q.solutionExplanation = `
+          1. O espaço entre cada número inteiro está dividido em <strong>${den} partes iguais</strong>.<br/>
+          2. Portanto, cada traço menor representa a fração <strong>1/${den}</strong>.<br/>
+          3. Contando <strong>${num} marcações</strong> a partir do 0, chegamos exatamente na fração <strong>${num}/${den}</strong>.
+        `;
+
+      } else if (mode === 'identify') {
+        let stepOptions = difficulty === 'easy' ? [1, 2, 5] : [3, 4, 6, 8, 10];
+        let step = stepOptions[getRandomInt(0, stepOptions.length - 1)];
+        
+        let startVal = 0;
+        if (difficulty !== 'easy') {
+          startVal = getRandomInt(-5, 2) * step;
+        }
+
+        let targetIndex = getRandomInt(2, 9);
+        let targetVal = startVal + (targetIndex * step);
+
+        q.step = step;
+        q.startVal = startVal;
+        q.targetVal = targetVal;
+        q.pointIndex = targetIndex;
+        q.title = `Qual é o número indicado pelo ponto no marcador destacado na reta?`;
+        q.type = 'choice';
+
+        let choices = new Set([targetVal]);
+        while (choices.size < 4) {
+          let offset = getRandomInt(-3, 3) * step;
+          if (offset !== 0) choices.add(targetVal + offset);
+        }
+        q.options = Array.from(choices).sort((a, b) => a - b);
+
+        q.hints = [
+          `Calcule a diferença entre duas marcas conhecidas para achar a escala da reta.`,
+          `Cada risco representa um avanço de ${step} unidades.`,
+          `Conte a partir do ${startVal} avançando ${targetIndex} riscos de tamanho ${step}.`
+        ];
+
+        q.solutionExplanation = `
+          O ponto está na marcação de número <strong>${targetVal}</strong> porque cada intervalo vale <strong>${step}</strong> e ele está ${targetIndex} passos após o ${startVal}.
+        `;
+
+      } else if (mode === 'operations') {
+        let a = getRandomInt(-8, 8);
+        let b = getRandomInt(-8, 8);
+        if (b === 0) b = 3;
+        
+        let result = a + b;
+        let step = 1;
+        let minVal = Math.min(a, result, -5) - 2;
+        let startVal = minVal;
+
+        q.step = step;
+        q.startVal = startVal;
+        q.targetVal = result;
+        q.opA = a;
+        q.opB = b;
+        q.initialUserVal = startVal;
+        
+        let directionText = b > 0 ? `desloque-se ${b} unidades para a DIREITA` : `desloque-se ${Math.abs(b)} unidades para a ESQUERDA`;
+        q.title = `Comece no número ${a} e ${directionText}. Em qual número você vai parar?`;
+        q.type = 'drag';
+
+        q.hints = [
+          `Localize primeiro o número inicial (${a}) na reta.`,
+          b > 0 ? `Movimentar para a DIREITA significa SOMAR (+${b}).` : `Movimentar para a ESQUERDA significa SUBTRAIR (${b}).`,
+          `A expressão é: (${a}) + (${b}) = ${result}.`
+        ];
+
+        q.solutionExplanation = `
+          Iniciando em <strong>${a}</strong> e andando <strong>${Math.abs(b)}</strong> posição(ões) para a ${b > 0 ? 'direita (+)' : 'esquerda (-)'}, chegamos exatamente no número <strong>${result}</strong>.
+        `;
+
+      } else if (mode === 'distance') {
+        let num1 = getRandomInt(-10, 5);
+        let num2 = getRandomInt(num1 + 2, num1 + 12);
+        let distance = num2 - num1;
+
+        q.step = 1;
+        q.startVal = Math.min(num1, -2) - 1;
+        q.num1 = num1;
+        q.num2 = num2;
+        q.targetVal = distance;
+        q.title = `Qual é a distância (em unidades) entre o número ${num1} e o número ${num2} na reta numérica?`;
+        q.type = 'choice';
+
+        let choices = new Set([distance]);
+        while (choices.size < 4) {
+          let dummy = distance + getRandomInt(-4, 4);
+          if (dummy >= 0 && dummy !== distance) choices.add(dummy);
+        }
+        q.options = Array.from(choices).sort((a, b) => a - b);
+
+        q.hints = [
+          `A distância na reta numérica é sempre um valor positivo (ou zero).`,
+          `Você pode contar quantos "espaços" existem entre ${num1} e ${num2}.`,
+          `Fórmula da distância: |${num2} - (${num1})| = ${num2} - (${num1}) = ${distance}.`
+        ];
+
+        q.solutionExplanation = `
+          A distância entre <strong>${num1}</strong> e <strong>${num2}</strong> é de <strong>${distance} unidades</strong> na reta numérica.<br/>
+          Cálculo: <code>|${num2} - (${num1})| = ${distance}</code>.
+        `;
+      }
+
+      return q;
+    }
+
+    function NumberLineVisualizer({ 
+      question, 
+      userVal, 
+      onValChange, 
+      showSolution = false, 
+      interactive = true,
+      showSandboxTooltip = false
+    }) {
+      const svgRef = useRef(null);
+      const [isDragging, setIsDragging] = useState(false);
+
+      const totalTicks = question.totalTicks || 11;
+      const step = question.step || 1;
+      const startVal = question.startVal || 0;
+      const endVal = startVal + (totalTicks - 1) * step;
+
+      const ticks = useMemo(() => {
+        let arr = [];
+        for (let i = 0; i < totalTicks; i++) {
+          let val = startVal + i * step;
+          val = Math.round(val * 1000) / 1000;
+          arr.push({
+            index: i,
+            val: val
+          });
+        }
+        return arr;
+      }, [startVal, step, totalTicks]);
+
+      const getXPercent = (val) => {
+        const minPx = 8;
+        const maxPx = 92;
+        const range = endVal - startVal;
+        if (range === 0) return 50;
+        const ratio = (val - startVal) / range;
+        return minPx + ratio * (maxPx - minPx);
+      };
+
+      const handlePointerMove = (e) => {
+        if (!interactive || (!isDragging && e.type !== 'pointerdown')) return;
+        
+        const svg = svgRef.current;
+        if (!svg) return;
+
+        const rect = svg.getBoundingClientRect();
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        if (clientX === undefined) return;
+
+        const clickXRel = (clientX - rect.left) / rect.width;
+        
+        const minP = 0.08;
+        const maxP = 0.92;
+        const clampedP = Math.max(minP, Math.min(maxP, clickXRel));
+        const normalized = (clampedP - minP) / (maxP - minP);
+        const approxValue = startVal + normalized * (endVal - startVal);
+
+        let closestTick = ticks[0].val;
+        let minDiff = Math.abs(approxValue - ticks[0].val);
+
+        for (let t of ticks) {
+          let diff = Math.abs(approxValue - t.val);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestTick = t.val;
+          }
+        }
+
+        onValChange(closestTick);
+      };
+
+      const handlePointerDown = (e) => {
+        if (!interactive) return;
+        setIsDragging(true);
+        e.target.setPointerCapture && e.target.setPointerCapture(e.pointerId);
+        handlePointerMove(e);
+      };
+
+      const handlePointerUp = () => {
+        setIsDragging(false);
+      };
+
+      return (
+        <div class="w-full bg-white p-6 rounded-2xl shadow-sm border border-slate-200 my-4 select-none">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex justify-between items-center">
+            <span>
+              {question.isFraction 
+                ? `Divisão da Unidade: ${question.den} partes iguais (1 traço = 1/${question.den})`
+                : `Reta Numérica Escala: 1 traço = ${step} ${step === 1 ? 'unidade' : 'unidades'}`}
+            </span>
+            {interactive && <span class="text-indigo-600 font-medium">Arraste o ponto laranja para responder</span>}
+          </div>
+
+          <div class="relative w-full py-8 overflow-x-auto">
+            <svg 
+              ref={svgRef}
+              class="w-full h-32 cursor-pointer touch-none"
+              viewBox="0 0 1000 160"
+              preserveAspectRatio="xMidYMid meet"
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+            >
+              <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+                </marker>
+                <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.15" />
+                </filter>
+              </defs>
+
+              {/* Base Line */}
+              <line 
+                x1="40" y1="80" 
+                x2="960" y2="80" 
+                stroke="#334155" 
+                strokeWidth="4" 
+                strokeLinecap="round"
+                markerStart="url(#arrow)"
+                markerEnd="url(#arrow)"
+              />
+
+              {/* Zero Highlight Marker */}
+              {ticks.some(t => Math.abs(t.val) < 0.0001) && (
+                <line 
+                  x1={40 + (getXPercent(0)/100) * 920} y1="58" 
+                  x2={40 + (getXPercent(0)/100) * 920} y2="102" 
+                  stroke="#94a3b8" 
+                  strokeWidth="3" 
+                  strokeDasharray="3 3"
+                />
+              )}
+
+              {/* Ticks and Labels */}
+              {ticks.map((t, idx) => {
+                const xPct = getXPercent(t.val);
+                const xPx = (xPct / 100) * 1000;
+                
+                let showLabel = true;
+                let isMajorTick = true;
+
+                if (question.isFraction) {
+                  const isInteger = Math.abs(t.val - Math.round(t.val)) < 0.0001;
+                  isMajorTick = isInteger;
+                  
+                  if (question.mode === 'fractions') {
+                    showLabel = isInteger;
+                  }
+                } else if (question.mode === 'locate') {
+                  showLabel = (idx === 0 || idx === 1);
+                } else if (question.mode === 'identify') {
+                  showLabel = (idx !== question.pointIndex && (idx === 0 || idx === 1 || idx === ticks.length - 1));
+                } else if (question.mode === 'operations') {
+                  showLabel = (t.val === question.opA || idx === 0 || idx === ticks.length - 1);
+                } else if (question.mode === 'distance') {
+                  showLabel = (t.val === question.num1 || t.val === question.num2 || t.val === 0);
+                }
+
+                if (showSolution) showLabel = true;
+
+                const isZero = Math.abs(t.val) < 0.0001;
+
+                return (
+                  <g key={idx}>
+                    <line 
+                      x1={xPx} y1={isMajorTick ? "66" : "72"} 
+                      x2={xPx} y2={isMajorTick ? "94" : "88"} 
+                      stroke={isZero ? "#0f172a" : isMajorTick ? "#334155" : "#64748b"} 
+                      strokeWidth={isZero ? "4" : isMajorTick ? "3" : "2"} 
+                      strokeLinecap="round"
+                    />
+
+                    {showLabel && (
+                      <text 
+                        x={xPx} 
+                        y="125" 
+                        textAnchor="middle" 
+                        fontSize={isMajorTick ? "22" : "16"} 
+                        fontWeight={isZero ? "800" : isMajorTick ? "700" : "500"} 
+                        fill={isZero ? "#2563eb" : "#1e293b"}
+                      >
+                        {question.isFraction && !isMajorTick 
+                          ? `${Math.round(t.val * question.den)}/${question.den}`
+                          : Math.round(t.val * 100) / 100}
+                      </text>
+                    )}
+
+                    {question.mode === 'identify' && idx === question.pointIndex && !showSolution && (
+                      <g transform={`translate(${xPx}, 40)`}>
+                        <circle r="16" fill="#e11d48" />
+                        <text y="6" textAnchor="middle" fill="white" fontSize="18" fontWeight="bold">?</text>
+                      </g>
+                    )}
+                  </g>
+                );
+              })}
+
+              {/* Distance Highlight Arc */}
+              {question.mode === 'distance' && (
+                <g>
+                  {(() => {
+                    const x1 = (getXPercent(question.num1) / 100) * 1000;
+                    const x2 = (getXPercent(question.num2) / 100) * 1000;
+                    const midX = (x1 + x2) / 2;
+                    return (
+                      <>
+                        <path 
+                          d={`M ${x1} 70 Q ${midX} 20 ${x2} 70`} 
+                          fill="none" 
+                          stroke="#8b5cf6" 
+                          strokeWidth="3" 
+                          strokeDasharray="6 4"
+                        />
+                        <rect x={midX - 35} y="15" width="70" height="26" rx="6" fill="#8b5cf6" />
+                        <text x={midX} y="33" textAnchor="middle" fill="white" fontSize="14" fontWeight="bold">
+                          distância
+                        </text>
+                      </>
+                    );
+                  })()}
+                </g>
+              )}
+
+              {/* User Interactive Orange Draggable Point */}
+              {(question.type === 'drag' || userVal !== undefined) && (
+                <g 
+                  transform={`translate(${(getXPercent(userVal) / 100) * 1000}, 80)`}
+                  style={{ cursor: interactive ? 'grab' : 'default', transition: isDragging ? 'none' : 'transform 0.15s ease-out' }}
+                  filter="url(#shadow)"
+                >
+                  <circle r="20" fill="#f97316" fillOpacity="0.25" class="animate-pulse" />
+                  <circle r="12" fill="#f97316" stroke="#ffffff" strokeWidth="3" />
+                  <circle r="4" fill="#ffffff" />
+                  
+                  {showSandboxTooltip && (
+                    <g transform="translate(0, -28)">
+                      <rect x="-24" y="-18" width="48" height="24" rx="6" fill="#0f172a" />
+                      <text x="0" y="-2" textAnchor="middle" fill="#ffffff" fontSize="13" fontWeight="bold">
+                        {userVal}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              )}
+
+              {/* Show Target Correct Answer marker when solved/failed */}
+              {showSolution && Math.abs(question.targetVal - userVal) > 0.001 && (
+                <g transform={`translate(${(getXPercent(question.targetVal) / 100) * 1000}, 80)`}>
+                  <circle r="12" fill="#22c55e" stroke="#ffffff" strokeWidth="3" />
+                  <text y="-20" textAnchor="middle" fill="#15803d" fontSize="14" fontWeight="bold">
+                    Resposta Correta: {question.isFraction ? `${question.num}/${question.den}` : question.targetVal}
+                  </text>
+                </g>
+              )}
+            </svg>
+          </div>
+
+          <div class="flex justify-between items-center text-xs text-slate-500 pt-2 border-t border-slate-100">
+            <span>Dica: Clique ou arraste o marcador de valor na reta</span>
+            <span class="font-medium text-slate-400">Ponto posicionado na reta</span>
+          </div>
+        </div>
+      );
+    }
+
+    function QuizPractice({ mode, difficulty, onScoreUpdate }) {
+      const [question, setQuestion] = useState(null);
+      const [userVal, setUserVal] = useState(0);
+      const [selectedChoice, setSelectedChoice] = useState(null);
+      const [hintLevel, setHintLevel] = useState(0);
+      const [submitted, setSubmitted] = useState(false);
+      const [isCorrect, setIsCorrect] = useState(false);
+      const [showExplanation, setShowExplanation] = useState(false);
+
+      useEffect(() => {
+        loadNewQuestion();
+      }, [mode, difficulty]);
+
+      const loadNewQuestion = () => {
+        const q = generateQuestion(mode, difficulty);
+        setQuestion(q);
+        setUserVal(q.initialUserVal || q.startVal);
+        setSelectedChoice(null);
+        setHintLevel(0);
+        setSubmitted(false);
+        setIsCorrect(false);
+        setShowExplanation(false);
+      };
+
+      const handleCheck = () => {
+        if (!question || submitted) return;
+
+        let correct = false;
+        if (question.type === 'drag') {
+          correct = Math.abs(userVal - question.targetVal) < 0.001;
+        } else if (question.type === 'choice') {
+          correct = (selectedChoice === question.targetVal);
+        }
+
+        setSubmitted(true);
+        setIsCorrect(correct);
+
+        if (correct) {
+          const pts = difficulty === 'easy' ? 10 : difficulty === 'medium' ? 15 : 20;
+          onScoreUpdate(pts);
+          try {
+            confetti({
+              particleCount: 80,
+              spread: 70,
+              origin: { y: 0.6 }
+            });
+          } catch(e) {}
+        }
+      };
+
+      if (!question) return null;
+
+      const currentSubthemeInfo = SUBTHEMES.find(s => s.id === mode) || SUBTHEMES[0];
+
+      return (
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
+          {/* Main Question Display Area */}
+          <div class="lg:col-span-2 space-y-4">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+              <div class="flex justify-between items-center mb-4">
+                <span class="px-3 py-1 bg-indigo-50 text-indigo-700 font-extrabold text-xs rounded-lg uppercase tracking-wider">
+                  {currentSubthemeInfo.icon} {currentSubthemeInfo.name}
+                </span>
+                <span class="text-xs font-bold text-slate-400">
+                  Nível: <strong class="text-slate-700 capitalize">{difficulty}</strong>
+                </span>
+              </div>
+
+              <h2 class="text-xl sm:text-2xl font-black text-slate-800 mb-4">{question.title}</h2>
+
+              <NumberLineVisualizer 
+                question={question}
+                userVal={userVal}
+                onValChange={setUserVal}
+                showSolution={submitted && showExplanation}
+                interactive={question.type === 'drag' && !submitted}
+                showSandboxTooltip={false}
+              />
+
+              {/* Multiple Choice Options */}
+              {question.type === 'choice' && (
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                  {question.options.map((opt) => (
+                    <button
+                      key={opt}
+                      disabled={submitted}
+                      onClick={() => setSelectedChoice(opt)}
+                      class={`p-4 rounded-xl font-bold text-lg transition border ${
+                        selectedChoice === opt 
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-200' 
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Dica */}
+            {hintLevel > 0 && (
+              <div class="bg-amber-50 border border-amber-200 p-5 rounded-2xl space-y-2">
+                <h4 class="font-extrabold text-amber-900 text-sm flex items-center gap-2">
+                  <span>💡</span> Dica {hintLevel} de {question.hints.length}:
+                </h4>
+                <div class="space-y-1">
+                  {question.hints.slice(0, hintLevel).map((h, idx) => (
+                    <p key={idx} class="text-sm font-medium text-amber-800 bg-amber-100/60 p-2.5 rounded-lg border border-amber-200/50">
+                      • {h}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Solução Explicada */}
+            {showExplanation && (
+              <div class="bg-emerald-50 border border-emerald-200 p-5 rounded-2xl space-y-2">
+                <h4 class="font-extrabold text-emerald-900 text-sm flex items-center gap-2">
+                  <span>📘</span> Resolução Passo a Passo:
+                </h4>
+                <div 
+                  class="text-sm text-emerald-900 leading-relaxed space-y-2 font-medium"
+                  dangerouslySetInnerHTML={{ __html: question.solutionExplanation }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Action Control Panel */}
+          <div class="space-y-4">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+              <h3 class="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-3">Responder</h3>
+
+              <p class="text-sm text-slate-600 font-medium mb-4">
+                {question.type === 'drag' 
+                  ? 'Arraste o ponto laranja para a posição correta na reta e clique em "Confira resposta".'
+                  : 'Selecione uma das opções ao lado e clique em "Confira resposta".'}
+              </p>
+
+              {!submitted ? (
+                <button
+                  onClick={handleCheck}
+                  disabled={question.type === 'choice' && selectedChoice === null}
+                  class="w-full py-4 bg-lime-600 hover:bg-lime-700 disabled:opacity-50 text-white font-black text-lg rounded-xl shadow-md transition transform active:scale-95"
+                >
+                  Confira resposta
+                </button>
+              ) : (
+                <div class="space-y-3">
+                  <div class={`p-4 rounded-xl font-black text-center text-lg ${
+                    isCorrect ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-100 text-rose-800 border border-rose-300'
+                  }`}>
+                    {isCorrect ? '🎉 Excelente! Resposta Correta!' : '❌ Ops! Tente novamente ou veja a solução.'}
+                  </div>
+
+                  <button
+                    onClick={loadNewQuestion}
+                    class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-md rounded-xl shadow-md transition"
+                  >
+                    Próxima Questão ➔
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+              <h3 class="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Precisa de ajuda?</h3>
+
+              {hintLevel < question.hints.length && (
+                <button
+                  onClick={() => setHintLevel(prev => prev + 1)}
+                  class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl shadow-sm transition flex items-center justify-center gap-2"
+                >
+                  <span>💡</span>
+                  <span>Eu gostaria de uma dica ({hintLevel}/{question.hints.length})</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setShowExplanation(!showExplanation);
+                  setSubmitted(true);
+                }}
+                class="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 border border-slate-200"
+              >
+                <span>📘</span>
+                <span>{showExplanation ? 'Ocultar Solução' : 'Ver Solução Passo a Passo'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function SandboxExplorer() {
+      const [startVal, setStartVal] = useState(-10);
+      const [step, setStep] = useState(2);
+      const [ticksCount, setTicksCount] = useState(11);
+      const [activePoint, setActivePoint] = useState(0);
+      const [showAllLabels, setShowAllLabels] = useState(true);
+
+      return (
+        <div class="space-y-6">
+          <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h2 class="text-xl font-bold text-slate-800 mb-2 flex items-center gap-2">
+              <span class="p-2 bg-indigo-100 text-indigo-600 rounded-lg">🧪</span>
+              Laboratório Interativo da Reta Numérica
+            </h2>
+            <p class="text-sm text-slate-600 mb-6">
+              Ajuste as configurações para explorar números inteiros e decimais, alterando as escalas e observando valores simétricos e módulos.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-2">Valor Inicial (Início da Reta)</label>
+                <input 
+                  type="number" 
+                  value={startVal} 
+                  onChange={(e) => setStartVal(parseInt(e.target.value) || 0)}
+                  class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-semibold text-slate-800"
+                />
+              </div>
+
+              <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-2">Escala / Intervalo (Pulo)</label>
+                <select 
+                  value={step} 
+                  onChange={(e) => setStep(parseInt(e.target.value))}
+                  class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-semibold text-slate-800"
+                >
+                  <option value="1">1 em 1</option>
+                  <option value="2">2 em 2 (Pares)</option>
+                  <option value="3">3 em 3</option>
+                  <option value="5">5 em 5</option>
+                  <option value="10">10 em 10</option>
+                </select>
+              </div>
+
+              <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-2">Opções de Exibição</label>
+                <button 
+                  onClick={() => setShowAllLabels(!showAllLabels)}
+                  class={`w-full py-2 px-4 rounded-lg font-semibold text-sm transition ${
+                    showAllLabels ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {showAllLabels ? 'Ocultar Números Intermediários' : 'Mostrar Todos os Números'}
+                </button>
+              </div>
+            </div>
+
+            <NumberLineVisualizer 
+              question={{
+                mode: 'sandbox',
+                step: step,
+                startVal: startVal,
+                targetVal: activePoint,
+                totalTicks: ticksCount
+              }}
+              userVal={activePoint}
+              onValChange={setActivePoint}
+              showSolution={showAllLabels}
+              interactive={true}
+              showSandboxTooltip={true}
+            />
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+              <div class="bg-indigo-50 border border-indigo-100 p-4 rounded-xl">
+                <div class="text-xs text-indigo-600 font-bold uppercase">Valor Selecionado</div>
+                <div class="text-2xl font-extrabold text-indigo-900 mt-1">{activePoint}</div>
+                <div class="text-xs text-indigo-700 mt-1">
+                  {activePoint > 0 ? 'Número Positivo (+)' : activePoint < 0 ? 'Número Negativo (-)' : 'Origem (Zero)'}
+                </div>
+              </div>
+
+              <div class="bg-purple-50 border border-purple-100 p-4 rounded-xl">
+                <div class="text-xs text-purple-600 font-bold uppercase">Módulo / Distância de Zero |x|</div>
+                <div class="text-2xl font-extrabold text-purple-900 mt-1">|{activePoint}| = {Math.abs(activePoint)}</div>
+                <div class="text-xs text-purple-700 mt-1">Unidades de distância até o 0</div>
+              </div>
+
+              <div class="bg-amber-50 border border-amber-100 p-4 rounded-xl">
+                <div class="text-xs text-amber-600 font-bold uppercase">Número Oposto / Simétrico</div>
+                <div class="text-2xl font-extrabold text-amber-900 mt-1">{-activePoint}</div>
+                <div class="text-xs text-amber-700 mt-1">Mesma distância do zero, sinal oposto</div>
+              </div>
+
+              <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-xl">
+                <div class="text-xs text-emerald-600 font-bold uppercase">Sucessor e Antecessor</div>
+                <div class="text-lg font-bold text-emerald-900 mt-1">
+                  {activePoint - 1} &lt; <span class="text-emerald-600 underline">{activePoint}</span> &lt; {activePoint + 1}
+                </div>
+                <div class="text-xs text-emerald-700 mt-1">Antecessor (-1) e Sucessor (+1)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function GoogleSheetsModal({ isOpen, onClose, webAppUrl, setWebAppUrl }) {
+      const [copiedScript, setCopiedScript] = useState(false);
+      const [tempUrl, setTempUrl] = useState(webAppUrl);
+
+      if (!isOpen) return null;
+
+      const scriptCode = `function doPost(e) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var data = {};
+
+    if (e && e.postData && e.postData.contents) {
+      data = JSON.parse(e.postData.contents);
+    } else if (e && e.parameter) {
+      data = e.parameter;
+    }
+    
+    // Se a planilha estiver vazia, cria o cabeçalho
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(["Data e Hora", "Nome", "Tipo", "Pontuação", "Acertos", "Total Questões", "Precisão (%)"]);
+    }
+    
+    sheet.appendRow([
+      data.timestamp || new Date().toLocaleString("pt-BR"),
+      data.name || "Anônimo",
+      data.type || "Individual",
+      Number(data.score) || 0,
+      Number(data.correct) || 0,
+      Number(data.total) || 0,
+      Number(data.accuracy) || 0
+    ]);
+    
+    return ContentService.createTextOutput(JSON.stringify({result: "success"}))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({result: "error", error: err.toString()}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
+      const handleSave = () => {
+        setWebAppUrl(tempUrl.trim());
+        localStorage.setItem('reta_numerica_sheets_url', tempUrl.trim());
+        onClose();
+      };
+
+      const copyScript = () => {
+        try {
+          const textarea = document.createElement('textarea');
+          textarea.value = scriptCode;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+          setCopiedScript(true);
+          setTimeout(() => setCopiedScript(false), 2500);
+        } catch (err) {
+          console.error("Erro ao copiar código:", err);
+        }
+      };
+
+      return (
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 sm:p-8 relative space-y-5 my-8">
+            <button 
+              onClick={onClose}
+              class="absolute top-5 right-5 text-slate-400 hover:text-slate-600 font-extrabold text-xl w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center"
+            >
+              ✕
+            </button>
+
+            <div class="flex items-center gap-3">
+              <div class="p-3 bg-emerald-100 text-emerald-700 rounded-2xl text-2xl">📊</div>
+              <div>
+                <h3 class="text-xl font-black text-slate-900">Integração com Google Sheets</h3>
+                <p class="text-xs text-slate-500 font-medium">Conecte um Banco de Dados em tempo real para salvar resultados do Desafio Cronometrado.</p>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <label class="block text-xs font-bold text-slate-700 uppercase">URL do Web App do Google Apps Script:</label>
+              <input 
+                type="text" 
+                placeholder="https://script.google.com/macros/s/.../exec"
+                value={tempUrl}
+                onChange={(e) => setTempUrl(e.target.value)}
+                class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <p class="text-[11px] text-slate-500">Cole a URL do Web App gerada após implantar o script na sua Planilha Google.</p>
+            </div>
+
+            <div class="bg-slate-900 text-slate-200 p-4 rounded-2xl space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="text-xs font-extrabold text-emerald-400 uppercase tracking-wider">Código do Script Atualizado (Google Apps Script)</span>
+                <button 
+                  onClick={copyScript}
+                  class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1"
+                >
+                  {copiedScript ? '✓ Copiado!' : '📋 Copiar Código'}
+                </button>
+              </div>
+              <pre class="text-[11px] font-mono leading-relaxed overflow-x-auto p-2 bg-slate-950 rounded-lg text-slate-300 max-h-40">
+                {scriptCode}
+              </pre>
+            </div>
+
+            <div class="bg-amber-50 border border-amber-300 p-4 rounded-xl text-xs text-amber-950 space-y-2">
+              <div class="font-extrabold text-amber-900 flex items-center gap-1">
+                <span>⚠️</span> ATENÇÃO: Passos Cruciais na Publicação (Para Funcionar Corretamente):
+              </div>
+              <ol class="list-decimal list-inside space-y-1 font-medium text-[11px] leading-relaxed">
+                <li>Na sua Planilha Google, vá em <strong>Extensões ➔ Apps Script</strong> e cole o código acima.</li>
+                <li>Clique em <strong>Implantar ➔ Nova implantação</strong> (ou <strong>Gerenciar Implantações ➔ Editar ➔ Nova Versão</strong> se já implantou).</li>
+                <li>Em <strong>Executar como</strong>: Selecione <strong>"Eu"</strong> (sua conta).</li>
+                <li>Em <strong>Quem tem acesso</strong>: SELECIONE OBRIGATORIAMENTE <strong>"Qualquer pessoa" (Anyone)</strong>. <em>(Se deixar "Apenas eu" ou "Com conta Google", o envio falha silenciosamente!)</em>.</li>
+                <li>Copie o novo link <code>.../exec</code> e cole no campo acima!</li>
+              </ol>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-2">
+              <button 
+                onClick={onClose}
+                class="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleSave}
+                class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-md transition"
+              >
+                Salvar Integração
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function QRCodeModal({ isOpen, onClose, targetUrl }) {
+      const [inputUrl, setInputUrl] = useState('');
+      const [copied, setCopied] = useState(false);
+      const [imgError, setImgError] = useState(false);
+      const qrContainerRef = useRef(null);
+
+      useEffect(() => {
+        if (isOpen) {
+          let initial = targetUrl || '';
+          if (!initial || initial.startsWith('about:') || initial.startsWith('blob:') || initial.startsWith('data:')) {
+            initial = window.location.origin && !window.location.origin.includes('null') ? window.location.origin : 'https://';
+          }
+          setInputUrl(initial);
+          setImgError(false);
+        }
+      }, [isOpen, targetUrl]);
+
+      useEffect(() => {
+        if (!isOpen || !qrContainerRef.current) return;
+
+        qrContainerRef.current.innerHTML = '';
+
+        const cleanUrl = inputUrl.trim();
+        if (cleanUrl && cleanUrl !== 'https://' && window.QRCode) {
+          try {
+            new window.QRCode(qrContainerRef.current, {
+              text: cleanUrl,
+              width: 220,
+              height: 220,
+              colorDark: "#0f172a",
+              colorLight: "#ffffff",
+              correctLevel: window.QRCode.CorrectLevel.H
+            });
+          } catch(e) {
+            console.error("Erro ao gerar QR Code local:", e);
+          }
+        }
+      }, [isOpen, inputUrl]);
+
+      if (!isOpen) return null;
+
+      const validUrl = inputUrl.trim();
+      const qrCodeApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(validUrl || 'https://')}`;
+
+      const handleCopy = () => {
+        try {
+          const textarea = document.createElement('textarea');
+          textarea.value = validUrl;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+          console.error("Erro ao copiar link:", err);
+        }
+      };
+
+      return (
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-sm w-full p-6 text-center relative space-y-4 my-8">
+            <button 
+              onClick={onClose}
+              class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-extrabold text-xl w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center"
+            >
+              ✕
+            </button>
+
+            <div class="p-3 bg-amber-100 text-amber-700 rounded-2xl inline-block text-2xl">📱</div>
+            <h3 class="text-xl font-black text-slate-900">QR Code para Inscrição</h3>
+            <p class="text-xs text-slate-500 font-medium">
+              Escaneie com a câmera do celular ou insira abaixo o link publicado da sua aplicação.
+            </p>
+
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-inner flex flex-col justify-center items-center min-h-[240px]">
+              <div ref={qrContainerRef} class="flex justify-center items-center"></div>
+              
+              {(!window.QRCode || imgError) && validUrl && validUrl !== 'https://' && (
+                <img 
+                  src={qrCodeApiUrl} 
+                  alt="QR Code para Inscrição" 
+                  class="w-52 h-52 rounded-lg"
+                  onError={() => setImgError(true)}
+                />
+              )}
+
+              {validUrl === 'https://' && (
+                <div class="text-xs text-amber-600 font-semibold p-3 bg-amber-50 rounded-xl border border-amber-200">
+                  💡 Digite ou cole a URL do seu site no campo abaixo para gerar o QR Code.
+                </div>
+              )}
+            </div>
+
+            <div class="space-y-1 text-left">
+              <label class="block text-[11px] font-bold text-slate-500 uppercase">Link do Aplicativo / Site:</label>
+              <div class="flex gap-2">
+                <input 
+                  type="text" 
+                  value={inputUrl}
+                  onChange={(e) => setInputUrl(e.target.value)}
+                  placeholder="https://seu-site.com"
+                  class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                <button
+                  onClick={handleCopy}
+                  class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl transition flex-shrink-0"
+                  title="Copiar Link"
+                >
+                  {copied ? '✓' : '📋'}
+                </button>
+              </div>
+            </div>
+
+            <button 
+              onClick={onClose}
+              class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl transition shadow-md"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    function TimedChallenge({ onScoreUpdate, webAppUrl, onOpenSheetsModal }) {
+      const [phase, setPhase] = useState('setup');
+      const [participantType, setParticipantType] = useState('individual');
+      const [participantName, setParticipantName] = useState('');
+      const [timeLimit, setTimeLimit] = useState(60);
+      
+      const [timeLeft, setTimeLeft] = useState(60);
+      const [currentScore, setCurrentScore] = useState(0);
+      const [correctCount, setCorrectCount] = useState(0);
+      const [totalAttempted, setTotalAttempted] = useState(0);
+      const [streak, setStreak] = useState(0);
+
+      const [currentSubthemeIndex, setCurrentSubthemeIndex] = useState(0);
+      const [completedSubthemes, setCompletedSubthemes] = useState([]);
+
+      const [question, setQuestion] = useState(null);
+      const [userVal, setUserVal] = useState(0);
+      const [selectedChoice, setSelectedChoice] = useState(null);
+      const [feedback, setFeedback] = useState(null);
+      const [isSendingSheet, setIsSendingSheet] = useState(false);
+
+      const [leaderboard, setLeaderboard] = useState(() => {
+        try {
+          const saved = localStorage.getItem('reta_numerica_leaderboard');
+          return saved ? JSON.parse(saved) : [
+            { id: 1, name: 'Equipe Alpha', type: 'group', score: 140, correct: 5, total: 5, date: 'Hoje' },
+            { id: 2, name: 'Maria Silva', type: 'individual', score: 110, correct: 5, total: 5, date: 'Hoje' },
+            { id: 3, name: 'João Pedro', type: 'individual', score: 80, correct: 4, total: 5, date: 'Hoje' }
+          ];
+        } catch(e) {
+          return [];
+        }
+      });
+
+      const timerRef = useRef(null);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('reta_numerica_leaderboard', JSON.stringify(leaderboard));
+        } catch(e) {}
+      }, [leaderboard]);
+
+      const loadQuestionForIndex = (index) => {
+        const subtheme = SUBTHEMES[index % SUBTHEMES.length];
+        const diff = 'medium';
+        const q = generateQuestion(subtheme.id, diff);
+        setQuestion(q);
+        setUserVal(q.initialUserVal || q.startVal);
+        setSelectedChoice(null);
+        setFeedback(null);
+      };
+
+      const startChallenge = () => {
+        if (!participantName.trim()) {
+          alert('Por favor, informe seu nome ou o nome do grupo!');
+          return;
+        }
+        setPhase('playing');
+        setCurrentScore(0);
+        setCorrectCount(0);
+        setTotalAttempted(0);
+        setStreak(0);
+        setTimeLeft(timeLimit);
+        setCurrentSubthemeIndex(0);
+        setCompletedSubthemes([]);
+        
+        loadQuestionForIndex(0);
+
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = setInterval(() => {
+          setTimeLeft((prev) => {
+            if (prev <= 1) {
+              clearInterval(timerRef.current);
+              endChallenge();
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      };
+
+      const endChallenge = () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+        setPhase('summary');
+        
+        try {
+          confetti({
+            particleCount: 150,
+            spread: 90,
+            origin: { y: 0.5 }
+          });
+        } catch(e) {}
+      };
+
+      // Salvar na Planilha do Google Sheets ao terminar a rodada
+      const saveToGoogleSheets = async (entry) => {
+        if (!webAppUrl) return;
+        setIsSendingSheet(true);
+        try {
+          const payload = JSON.stringify({
+            timestamp: new Date().toLocaleString('pt-BR'),
+            name: entry.name,
+            type: entry.type === 'group' ? 'Grupo' : 'Individual',
+            score: entry.score,
+            correct: entry.correct,
+            total: entry.total,
+            accuracy: entry.total > 0 ? Math.round((entry.correct / entry.total) * 100) : 0
+          });
+
+          await fetch(webAppUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8'
+            },
+            body: payload
+          });
+        } catch (e) {
+          console.error("Erro ao enviar para o Google Sheets:", e);
+        } finally {
+          setIsSendingSheet(false);
+        }
+      };
+
+      useEffect(() => {
+        if (phase === 'summary') {
+          const newEntry = {
+            id: Date.now(),
+            name: participantName,
+            type: participantType,
+            score: currentScore,
+            correct: correctCount,
+            total: totalAttempted,
+            date: new Date().toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          };
+
+          setLeaderboard(prev => {
+            const updated = [...prev, newEntry].sort((a, b) => b.score - a.score);
+            return updated;
+          });
+
+          if (webAppUrl) {
+            saveToGoogleSheets(newEntry);
+          }
+        }
+      }, [phase]);
+
+      const handleAnswer = () => {
+        if (feedback !== null || !question) return;
+        
+        let isCorrect = false;
+        if (question.type === 'drag') {
+          isCorrect = Math.abs(userVal - question.targetVal) < 0.001;
+        } else if (question.type === 'choice') {
+          isCorrect = (selectedChoice === question.targetVal);
+        }
+
+        const currentSubtheme = SUBTHEMES[currentSubthemeIndex % SUBTHEMES.length];
+        setCompletedSubthemes(prev => [...prev, { subthemeId: currentSubtheme.id, isCorrect }]);
+        setTotalAttempted(prev => prev + 1);
+
+        if (isCorrect) {
+          const addedPoints = 20 + streak * 5;
+          setCurrentScore(prev => prev + addedPoints);
+          setCorrectCount(prev => prev + 1);
+          setStreak(prev => prev + 1);
+          onScoreUpdate(addedPoints);
+          setFeedback('correct');
+        } else {
+          setStreak(0);
+          setFeedback('incorrect');
+        }
+
+        setTimeout(() => {
+          const nextIdx = currentSubthemeIndex + 1;
+          if (nextIdx >= SUBTHEMES.length) {
+            endChallenge();
+          } else if (timeLeft > 0) {
+            setCurrentSubthemeIndex(nextIdx);
+            loadQuestionForIndex(nextIdx);
+          }
+        }, 600);
+      };
+
+      const handleResetLeaderboard = () => {
+        if (window.confirm('Tem certeza que deseja zerar o pódio e histórico de pontuações?')) {
+          setLeaderboard([]);
+        }
+      };
+
+      const top1 = leaderboard[0];
+      const top2 = leaderboard[1];
+      const top3 = leaderboard[2];
+
+      const currentSubtheme = SUBTHEMES[currentSubthemeIndex % SUBTHEMES.length];
+
+      return (
+        <div class="space-y-6">
+          {phase === 'setup' && (
+            <div class="max-w-2xl mx-auto bg-white p-6 sm:p-8 rounded-2xl shadow-md border border-slate-200">
+              <div class="text-center mb-6">
+                <span class="inline-block p-3 bg-amber-100 text-amber-600 rounded-2xl text-3xl mb-2">🏆</span>
+                <h2 class="text-2xl font-black text-slate-800">Desafio Cronometrado dos 5 Subtemas</h2>
+                <p class="text-sm text-slate-500 mt-1 leading-relaxed">
+                  Esta rodada testará seu conhecimento trazendo <strong>exatamente 1 pergunta de cada subtema</strong> da Reta Numérica e Números Inteiros!
+                </p>
+              </div>
+
+              {/* Lista Visual dos 5 Subtemas */}
+              <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 mb-6">
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Subtemas que farão parte do seu Desafio:</div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-bold text-slate-700">
+                  {SUBTHEMES.map((s, idx) => (
+                    <div key={s.id} class="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center gap-2">
+                      <span class="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 font-black flex items-center justify-center text-xs">
+                        {idx + 1}
+                      </span>
+                      <span>{s.icon} {s.name.replace(/^\d+\.\s*/, '')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div class="space-y-5">
+                <div>
+                  <label class="block text-xs font-bold text-slate-600 uppercase mb-2">Modalidade de Inscrição</label>
+                  <div class="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setParticipantType('individual')}
+                      class={`py-3 px-4 rounded-xl font-bold text-sm border flex items-center justify-center gap-2 transition ${
+                        participantType === 'individual'
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-200'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>👤 Individual</span>
+                    </button>
+                    <button
+                      onClick={() => setParticipantType('group')}
+                      class={`py-3 px-4 rounded-xl font-bold text-sm border flex items-center justify-center gap-2 transition ${
+                        participantType === 'group'
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-200'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>👥 Grupo / Equipe</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-bold text-slate-600 uppercase mb-2">
+                    {participantType === 'individual' ? 'Nome do Aluno(a)' : 'Nome do Grupo / Dupla / Equipe'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={participantType === 'individual' ? 'Ex: Lucas Almeida' : 'Ex: Os Feras da Matemática'}
+                    value={participantName}
+                    onChange={(e) => setParticipantName(e.target.value)}
+                    class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-xs font-bold text-slate-600 uppercase mb-2">Tempo Limite da Rodada</label>
+                  <div class="grid grid-cols-3 gap-3">
+                    {[60, 90, 120].map((sec) => (
+                      <button
+                        key={sec}
+                        onClick={() => setTimeLimit(sec)}
+                        class={`py-2.5 px-3 rounded-xl font-bold text-sm border transition ${
+                          timeLimit === sec
+                            ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        ⏱️ {sec} Segundos
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Status da Conexão Google Sheets */}
+                <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <span class="text-xl">📊</span>
+                    <div>
+                      <div class="text-xs font-extrabold text-emerald-900">Banco de Dados Google Sheets</div>
+                      <div class="text-[11px] text-emerald-700 font-medium">
+                        {webAppUrl ? '✓ Link configurado. Os resultados serão enviados ao concluir o Desafio!' : 'Nenhuma planilha conectada no momento.'}
+                      </div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={onOpenSheetsModal}
+                    class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition"
+                  >
+                    {webAppUrl ? 'Alterar / Instruções' : 'Conectar'}
+                  </button>
+                </div>
+
+                <button
+                  onClick={startChallenge}
+                  class="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xl rounded-xl shadow-lg shadow-emerald-200 transition transform active:scale-95 flex items-center justify-center gap-3"
+                >
+                  <span>▶️</span> INICIAR DESAFIO DOS 5 SUBTEMAS
+                </button>
+              </div>
+            </div>
+          )}
+
+          {phase === 'playing' && question && (
+            <div class="space-y-4 max-w-4xl mx-auto">
+              <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+                <div class="flex flex-wrap justify-between items-center gap-4">
+                  <div class="flex items-center gap-3">
+                    <span class="px-3 py-1 bg-slate-100 rounded-lg text-xs font-extrabold text-slate-600 uppercase">
+                      {participantType === 'individual' ? '👤' : '👥'} {participantName}
+                    </span>
+                    <span class="text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
+                      🔥 Combo: x{streak}
+                    </span>
+                  </div>
+
+                  <div class="flex items-center gap-6">
+                    <div class="text-right">
+                      <div class="text-xs font-bold text-slate-400 uppercase">Pontos</div>
+                      <div class="text-2xl font-black text-indigo-600">{currentScore}</div>
+                    </div>
+
+                    <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-black text-2xl ${
+                      timeLeft <= 10 ? 'bg-rose-50 border-rose-300 text-rose-600 animate-pulse' : 'bg-amber-50 border-amber-200 text-amber-700'
+                    }`}>
+                      <span>⏱️</span>
+                      <span>{timeLeft}s</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100">
+                  <div class="text-[11px] font-bold text-slate-400 uppercase mb-2">Progresso do Desafio (Questão {currentSubthemeIndex + 1} de 5):</div>
+                  <div class="grid grid-cols-5 gap-2">
+                    {SUBTHEMES.map((sub, idx) => {
+                      const isDone = idx < currentSubthemeIndex;
+                      const isCurrent = idx === currentSubthemeIndex;
+                      const doneData = completedSubthemes[idx];
+
+                      return (
+                        <div 
+                          key={sub.id} 
+                          class={`p-2 rounded-xl border text-center transition ${
+                            isCurrent 
+                              ? 'bg-indigo-600 text-white border-indigo-600 font-extrabold shadow-sm ring-2 ring-indigo-200' 
+                              : isDone 
+                              ? (doneData?.isCorrect ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-rose-100 border-rose-300 text-rose-800')
+                              : 'bg-slate-50 border-slate-200 text-slate-400 font-medium'
+                          }`}
+                        >
+                          <div class="text-xs truncate">{sub.icon} Subtema {idx + 1}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div class="flex justify-between items-center mb-3">
+                  <span class="px-3 py-1 bg-indigo-50 text-indigo-700 font-extrabold text-xs rounded-lg uppercase">
+                    {currentSubtheme.icon} Subtema {currentSubthemeIndex + 1}: {currentSubtheme.name.replace(/^\d+\.\s*/, '')}
+                  </span>
+                </div>
+
+                <h3 class="text-lg font-bold text-slate-800 mb-2">{question.title}</h3>
+
+                <NumberLineVisualizer 
+                  question={question}
+                  userVal={userVal}
+                  onValChange={setUserVal}
+                  showSolution={false}
+                  interactive={question.type === 'drag'}
+                  showSandboxTooltip={false}
+                />
+
+                {question.type === 'choice' && (
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                    {question.options.map((opt) => (
+                      <button
+                        key={opt}
+                        onClick={() => setSelectedChoice(opt)}
+                        class={`p-3.5 rounded-xl font-bold text-lg transition border ${
+                          selectedChoice === opt 
+                            ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-200' 
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div class="mt-6 flex justify-end">
+                  <button
+                    onClick={handleAnswer}
+                    disabled={question.type === 'choice' && selectedChoice === null}
+                    class={`w-full sm:w-auto px-8 py-3.5 rounded-xl font-extrabold text-white text-lg transition shadow-md ${
+                      feedback === 'correct' 
+                        ? 'bg-emerald-600' 
+                        : feedback === 'incorrect' 
+                        ? 'bg-rose-600' 
+                        : 'bg-lime-600 hover:bg-lime-700 disabled:opacity-50'
+                    }`}
+                  >
+                    {feedback === 'correct' ? '✓ Correto! (+ Pontos)' : feedback === 'incorrect' ? '✕ Incorreto' : 'Responder e Avançar ➔'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {phase === 'summary' && (
+            <div class="space-y-8 max-w-3xl mx-auto">
+              <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-md border border-slate-200 text-center space-y-4">
+                <span class="text-4xl inline-block mb-1">🎉</span>
+                <h2 class="text-2xl font-black text-slate-900">Rodada Concluída!</h2>
+                <p class="text-sm text-slate-500">
+                  Parabéns <strong class="text-slate-800">{participantName}</strong> ({participantType === 'individual' ? 'Aluno' : 'Grupo'})!
+                </p>
+
+                {isSendingSheet && (
+                  <div class="text-xs font-bold text-emerald-600 bg-emerald-50 py-2 px-4 rounded-xl border border-emerald-200 inline-block animate-pulse">
+                    💾 Enviando resultado para a Planilha do Google Sheets...
+                  </div>
+                )}
+
+                <div class="grid grid-cols-3 gap-4 my-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <div>
+                    <div class="text-xs font-bold text-slate-400 uppercase">Pontuação Final</div>
+                    <div class="text-2xl font-black text-indigo-600 mt-1">{currentScore}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs font-bold text-slate-400 uppercase">Acertos nos Subtemas</div>
+                    <div class="text-2xl font-black text-emerald-600 mt-1">{correctCount} / {totalAttempted}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs font-bold text-slate-400 uppercase">Precisão</div>
+                    <div class="text-2xl font-black text-amber-600 mt-1">
+                      {totalAttempted > 0 ? Math.round((correctCount / totalAttempted) * 100) : 0}%
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap gap-3 justify-center">
+                  <button
+                    onClick={() => setPhase('setup')}
+                    class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-extrabold shadow-md transition"
+                  >
+                    🔄 Jogar Novamente / Nova Equipe
+                  </button>
+                </div>
+              </div>
+
+              {/* PODIUM DISPLAY */}
+              <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-md border border-slate-200">
+                <h3 class="text-xl font-black text-slate-900 text-center mb-6 flex items-center justify-center gap-2">
+                  <span>🥇</span> Pódio dos Campeões da Turma
+                </h3>
+
+                <div class="flex items-end justify-center gap-2 sm:gap-4 my-8 min-h-[220px]">
+                  {/* 2nd PLACE */}
+                  <div class="flex-1 flex flex-col items-center">
+                    {top2 ? (
+                      <>
+                        <div class="text-xs font-bold text-slate-600 mb-1 truncate max-w-[100px] text-center">{top2.name}</div>
+                        <div class="text-xs text-indigo-600 font-extrabold mb-1">{top2.score} pts</div>
+                        <div class="w-full bg-slate-300 rounded-t-xl h-28 flex flex-col items-center justify-center shadow-inner border-t-4 border-slate-400">
+                          <span class="text-2xl">🥈</span>
+                          <span class="text-xs font-black text-slate-700">2º Lugar</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div class="w-full bg-slate-100 rounded-t-xl h-20 flex items-center justify-center text-xs text-slate-400 font-bold">2º Vago</div>
+                    )}
+                  </div>
+
+                  {/* 1st PLACE */}
+                  <div class="flex-1 flex flex-col items-center -mt-6">
+                    {top1 ? (
+                      <>
+                        <span class="text-2xl animate-bounce">👑</span>
+                        <div class="text-sm font-black text-amber-700 mb-1 truncate max-w-[120px] text-center">{top1.name}</div>
+                        <div class="text-sm text-indigo-700 font-black mb-1">{top1.score} pts</div>
+                        <div class="w-full bg-gradient-to-t from-amber-400 to-amber-300 rounded-t-xl h-36 flex flex-col items-center justify-center shadow-md border-t-4 border-amber-500">
+                          <span class="text-3xl">🥇</span>
+                          <span class="text-sm font-black text-amber-900">1º Lugar</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div class="w-full bg-amber-50 rounded-t-xl h-28 flex items-center justify-center text-xs text-amber-400 font-bold">1º Vago</div>
+                    )}
+                  </div>
+
+                  {/* 3rd PLACE */}
+                  <div class="flex-1 flex flex-col items-center">
+                    {top3 ? (
+                      <>
+                        <div class="text-xs font-bold text-slate-600 mb-1 truncate max-w-[100px] text-center">{top3.name}</div>
+                        <div class="text-xs text-indigo-600 font-extrabold mb-1">{top3.score} pts</div>
+                        <div class="w-full bg-amber-700/20 rounded-t-xl h-20 flex flex-col items-center justify-center shadow-inner border-t-4 border-amber-700">
+                          <span class="text-xl">🥉</span>
+                          <span class="text-xs font-black text-amber-900">3º Lugar</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div class="w-full bg-slate-100 rounded-t-xl h-16 flex items-center justify-center text-xs text-slate-400 font-bold">3º Vago</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* LEADERBOARD TABLE */}
+                <div class="mt-8">
+                  <div class="flex justify-between items-center mb-3">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Classificação Geral</h4>
+                    <button
+                      onClick={handleResetLeaderboard}
+                      class="text-xs font-bold text-rose-500 hover:text-rose-700"
+                    >
+                      Limpar Placar
+                    </button>
+                  </div>
+
+                  <div class="overflow-hidden rounded-xl border border-slate-200">
+                    <table class="w-full text-left border-collapse">
+                      <thead>
+                        <tr class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-200">
+                          <th class="p-3">Pos.</th>
+                          <th class="p-3">Participante</th>
+                          <th class="p-3">Tipo</th>
+                          <th class="p-3 text-right">Pontos</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100 text-xs font-semibold">
+                        {leaderboard.length === 0 ? (
+                          <tr>
+                            <td colSpan="4" class="p-4 text-center text-slate-400">Nenhuma pontuação registrada ainda.</td>
+                          </tr>
+                        ) : (
+                          leaderboard.map((item, index) => (
+                            <tr key={item.id || index} class={index < 3 ? 'bg-amber-50/40' : 'bg-white'}>
+                              <td class="p-3 font-bold text-slate-700">
+                                {index === 0 ? '🥇 1º' : index === 1 ? '🥈 2º' : index === 2 ? '🥉 3º' : `${index + 1}º`}
+                              </td>
+                              <td class="p-3 font-bold text-slate-900">{item.name}</td>
+                              <td class="p-3">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
+                                  {item.type === 'group' ? '👥 Grupo' : '👤 Individual'}
+                                </span>
+                              </td>
+                              <td class="p-3 text-right font-black text-indigo-600">{item.score} pts</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('practice');
+      const [practiceMode, setPracticeMode] = useState('locate');
+      const [difficulty, setDifficulty] = useState('easy');
+      const [score, setScore] = useState(0);
+
+      // Google Sheets Integration State
+      const [webAppUrl, setWebAppUrl] = useState(() => {
+        return localStorage.getItem('reta_numerica_sheets_url') || '';
+      });
+      const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
+      const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+
+      const currentAppUrl = window.location.href;
+
+      return (
+        <div class="min-h-screen flex flex-col">
+          <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-white font-black text-xl shadow-md">
+                  📍
+                </div>
+                <div>
+                  <h1 class="font-extrabold text-slate-900 text-lg sm:text-xl leading-none">
+                    Reta Numérica & Inteiros
+                  </h1>
+                  <span class="text-xs text-slate-500 font-medium">Localização, Frações, Operações e Desafio</span>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-3">
+                {/* Botão QR Code */}
+                <button
+                  onClick={() => setIsQRModalOpen(true)}
+                  class="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-xl font-bold text-xs transition border border-slate-200"
+                  title="Exibir QR Code para Inscrição / Acesso"
+                >
+                  <span>📱</span>
+                  <span class="hidden sm:inline">QR Code</span>
+                </button>
+
+                {/* Botão Google Sheets */}
+                <button
+                  onClick={() => setIsSheetsModalOpen(true)}
+                  class={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition border ${
+                    webAppUrl 
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                  }`}
+                  title="Configurar Planilha Google Sheets"
+                >
+                  <span>📊</span>
+                  <span class="hidden sm:inline">{webAppUrl ? 'Sheets Conectado' : 'Google Sheets'}</span>
+                </button>
+
+                {/* Placar de Pontos */}
+                <div class="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-full font-extrabold text-sm border border-indigo-100">
+                  <span>🏆 Pontos:</span>
+                  <span class="text-indigo-900">{score}</span>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <div class="bg-slate-100 border-b border-slate-200 py-3">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap gap-2 justify-between items-center">
+              <div class="flex flex-wrap items-center gap-1 bg-slate-200/80 p-1 rounded-xl">
+                <button
+                  onClick={() => setActiveTab('practice')}
+                  class={`px-4 py-2 rounded-lg font-bold text-sm transition ${
+                    activeTab === 'practice' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  🎯 Exercícios e Prática
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('challenge')}
+                  class={`px-4 py-2 rounded-lg font-bold text-sm transition flex items-center gap-1.5 ${
+                    activeTab === 'challenge' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                >
+                  <span>⏱️</span>
+                  <span>Desafio Cronometrado</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('sandbox')}
+                  class={`px-4 py-2 rounded-lg font-bold text-sm transition ${
+                    activeTab === 'sandbox' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  🧪 Laboratório Livre
+                </button>
+              </div>
+
+              {activeTab === 'practice' && (
+                <div class="flex items-center gap-2 overflow-x-auto py-1">
+                  <span class="text-xs font-bold text-slate-500 uppercase mr-1">Subtema:</span>
+                  {SUBTHEMES.map((sub) => (
+                    <button
+                      key={sub.id}
+                      onClick={() => setPracticeMode(sub.id)}
+                      class={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                        practiceMode === sub.id ? 'bg-orange-500 text-white' : 'bg-white text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      {sub.icon} {sub.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {activeTab === 'practice' && (
+            <div class="bg-white border-b border-slate-200 py-2">
+              <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-3 text-xs font-bold">
+                <span class="text-slate-400 uppercase">Dificuldade:</span>
+                <button 
+                  onClick={() => setDifficulty('easy')}
+                  class={`px-3 py-1 rounded-md transition ${difficulty === 'easy' ? 'bg-emerald-100 text-emerald-800 font-extrabold' : 'text-slate-500 hover:bg-slate-100'}`}
+                >
+                  Fácil
+                </button>
+                <button 
+                  onClick={() => setDifficulty('medium')}
+                  class={`px-3 py-1 rounded-md transition ${difficulty === 'medium' ? 'bg-amber-100 text-amber-800 font-extrabold' : 'text-slate-500 hover:bg-slate-100'}`}
+                >
+                  Médio
+                </button>
+                <button 
+                  onClick={() => setDifficulty('hard')}
+                  class={`px-3 py-1 rounded-md transition ${difficulty === 'hard' ? 'bg-rose-100 text-rose-800 font-extrabold' : 'text-slate-500 hover:bg-slate-100'}`}
+                >
+                  Desafio
+                </button>
+              </div>
+            </div>
+          )}
+
+          <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            {activeTab === 'practice' ? (
+              <QuizPractice 
+                mode={practiceMode} 
+                difficulty={difficulty} 
+                onScoreUpdate={(pts) => setScore(s => s + pts)} 
+              />
+            ) : activeTab === 'challenge' ? (
+              <TimedChallenge 
+                onScoreUpdate={(pts) => setScore(s => s + pts)} 
+                webAppUrl={webAppUrl}
+                onOpenSheetsModal={() => setIsSheetsModalOpen(true)}
+              />
+            ) : (
+              <SandboxExplorer />
+            )}
+          </main>
+
+          {/* Modais da Aplicação */}
+          <GoogleSheetsModal 
+            isOpen={isSheetsModalOpen}
+            onClose={() => setIsSheetsModalOpen(false)}
+            webAppUrl={webAppUrl}
+            setWebAppUrl={setWebAppUrl}
+          />
+
+          <QRCodeModal 
+            isOpen={isQRModalOpen}
+            onClose={() => setIsQRModalOpen(false)}
+            targetUrl={currentAppUrl}
+          />
+
+          <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500">
+            Explorador da Reta Numérica &bull; Recurso Educativo de Matemática Inteira e Fracionária
+          </footer>
+        </div>
+      );
+    }
+
+    const rootElement = document.getElementById('root');
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(<App />);
+  </script>
+</body>
+</html>
